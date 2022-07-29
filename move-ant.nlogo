@@ -13,13 +13,19 @@ ants-own [
 to setup
   clear-all
   reset-ticks
-  create-nodes 2 [
+  create-nodes number-of-nodes [
     set size 2
     setxy random-xcor random-ycor
     set label who
     set shape "circle"
   ]
-  create-ants 1
+
+  create-ants number-of-ants [
+    set size 2
+    setxy random-xcor random-ycor
+    set label who
+    set shape "bug"
+  ]
 end
 
 to go
@@ -96,6 +102,21 @@ number-of-nodes
 2
 100
 2.0
+1
+1
+NIL
+HORIZONTAL
+
+SLIDER
+31
+211
+203
+244
+number-of-ants
+number-of-ants
+1
+100
+1.0
 1
 1
 NIL
