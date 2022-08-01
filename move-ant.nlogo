@@ -3,38 +3,90 @@ breed [ants ant]
 
 nodes-own [
   routing-table
+  list-ants
+]
+
+links-own [
+  pheromone
 ]
 
 ants-own [
+  assigned? ; true if already assigned to a source node
   destination
   source
+  current-node
+  list-visited-nodes
+  alive-time
 ]
+
+; buttons
 
 to setup
   clear-all
   reset-ticks
+
+  create-network
+end
+
+to go
+  reactive-path-setup
+  tick
+end
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+; functions
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+to create-network
   create-nodes number-of-nodes [
-    set size 2
+    ;set size 2
     setxy random-xcor random-ycor
     set label who
     set shape "circle"
   ]
 
-  create-ants number-of-ants [
-    set size 2
-    setxy random-xcor random-ycor
-    set label who
-    set shape "bug"
+  ask nodes [
+    create-links-with other nodes in-radius radius
+    set list-ants []
   ]
 end
 
-to go
+to reactive-path-setup
+  output-print "reactive-path-setup"
+  ; generate ants
+  create-ants number-of-ants [
+    set size 2
+    ;set label who
+    set shape "bug"
+    set assigned? false
+    ;output-print who
+  ]
+
+  ; repeat for each node
+
+  ask nodes [
+    ask ants [
+      ; set source node
+      move-to myself
+      output-print word "node" myself
+      output-print word "ant" self
+    ]
+    ;set source of ants myself
+
+    ;output-print source
+
+    ;let xpos [xcor] of source
+    ;let ypos [ycor] of source
+    ;setxy xpos ypos
+  ]
+
 end
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 @#$#@#$#@
 GRAPHICS-WINDOW
-210
+299
 10
-647
+736
 448
 -1
 -1
@@ -45,8 +97,8 @@ GRAPHICS-WINDOW
 1
 1
 0
-1
-1
+0
+0
 1
 -16
 16
@@ -116,11 +168,33 @@ number-of-ants
 number-of-ants
 1
 100
-1.0
+2.0
 1
 1
 NIL
 HORIZONTAL
+
+SLIDER
+29
+276
+201
+309
+radius
+radius
+0
+100
+23.0
+1
+1
+NIL
+HORIZONTAL
+
+OUTPUT
+5
+323
+285
+459
+11
 
 @#$#@#$#@
 ## WHAT IS IT?
