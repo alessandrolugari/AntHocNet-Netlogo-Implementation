@@ -63,21 +63,14 @@ to reactive-path-setup
   ]
 
   ; repeat for each node
-
   ask nodes [
     ask ants [
-      ; set source node
+      ; set source node and move ants to it
       move-to myself
-      output-print word "node" myself
-      output-print word "ant" self
+      ;output-print word "node" myself
+      ;output-print word "ant" self
+
     ]
-    ;set source of ants myself
-
-    ;output-print source
-
-    ;let xpos [xcor] of source
-    ;let ypos [ycor] of source
-    ;setxy xpos ypos
   ]
 
 end
