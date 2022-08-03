@@ -1,9 +1,10 @@
+extensions [table]
+
 breed [nodes node]
 breed [ants ant]
 
 nodes-own [
   routing-table
-  list-ants
 ]
 
 links-own [
@@ -11,14 +12,15 @@ links-own [
 ]
 
 ants-own [
-  assigned? ; true if already assigned to a source node
-  destination
-  source
+  target
   current-node
-  list-visited-nodes
+  visited-nodes
   alive-time
 ]
 
+globals [
+  routing-table-tmp
+]
 ; buttons
 
 to setup
@@ -29,7 +31,11 @@ to setup
 end
 
 to go
-  reactive-path-setup
+  output-print "##########"
+  output-print "reactive-path-setup"
+  output-print "##########"
+  ; reactive-path-setup
+
   tick
 end
 
@@ -39,7 +45,7 @@ end
 
 to create-network
   create-nodes number-of-nodes [
-    ;set size 2
+    set size 2
     setxy random-xcor random-ycor
     set label who
     set shape "circle"
@@ -47,40 +53,103 @@ to create-network
 
   ask nodes [
     create-links-with other nodes in-radius radius
-    set list-ants []
+
   ]
 end
 
 to reactive-path-setup
-  output-print "reactive-path-setup"
   ; generate ants
   create-ants number-of-ants [
-    set size 2
+    set size 1
     ;set label who
     set shape "bug"
-    set assigned? false
-    ;output-print who
+    set visited-nodes []
   ]
+
 
   ; repeat for each node
   ask nodes [
+    ; create routing table for each node
+    set routing-table table:make
+    set routing-table-tmp table:make
+
     ask ants [
       ; set source node and move ants to it
-      move-to myself
-      ;output-print word "node" myself
-      ;output-print word "ant" self
+      ;output-print ""
+      ;output-print word "ant " [who] of self
+      if member? myself visited-nodes = false [
+        move-to myself
+        set current-node myself
+        set visited-nodes lput myself visited-nodes
+      ]
+      let source myself
+      ; set destinations node
+      let destination-list []
+      ask nodes [
+        if self != source [
+          set destination-list lput self destination-list
+          ifelse table:has-key? routing-table-tmp [who] of self [
+            table:put routing-table-tmp [who] of self table:get routing-table-tmp [who] of self
+          ][
+            ; destination not in table
+            table:put routing-table-tmp [who] of self []
+          ]
+        ]
+      ]
 
+      foreach destination-list [
+        dest ->
+
+        set current-node source
+
+        set visited-nodes []
+        set visited-nodes lput current-node visited-nodes
+        ; if dest has no links --> skip and leave an empty routing table
+
+        ;output-print [link-neighbors] of dest
+        while [current-node != dest] [
+          ;output-print word "current-node -> " current-node
+
+          set current-node one-of [link-neighbors] of current-node
+          set visited-nodes lput current-node visited-nodes
+
+          if current-node = dest [
+            ;output-print word "target trovato --> " dest
+            ; insert best path to destination based on the lenght of the path (the shortest, the better)
+            let best-visited-nodes table:get routing-table-tmp [who] of dest
+            let length-best-path 0
+            ifelse empty? best-visited-nodes [
+              set length-best-path 100000000000000 ; reasonably big number
+            ][
+              set length-best-path length best-visited-nodes
+            ]
+
+            if length visited-nodes < length-best-path [
+              ; override best path only if visited-nodes has a shorter path to destination
+              ;output-print word "target trovato --> " dest
+              set length-best-path length visited-nodes
+              set best-visited-nodes visited-nodes
+
+              table:put routing-table-tmp [who] of dest visited-nodes
+            ]
+          ]
+        ]
+
+      ]
     ]
+
+    ;set routing-table routing-table-tmp
+    output-print word "last routing table of node " self
+    output-print routing-table-tmp
   ]
 
 end
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 @#$#@#$#@
 GRAPHICS-WINDOW
-299
-10
-736
-448
+266
+15
+703
+453
 -1
 -1
 13.0
@@ -104,10 +173,10 @@ ticks
 30.0
 
 BUTTON
-27
-30
-90
-63
+12
+10
+75
+43
 NIL
 setup
 NIL
@@ -121,10 +190,10 @@ NIL
 1
 
 BUTTON
-28
-86
-91
-119
+13
+66
+76
+99
 NIL
 go
 NIL
@@ -138,56 +207,73 @@ NIL
 1
 
 SLIDER
-28
-158
-200
-191
+15
+122
+187
+155
 number-of-nodes
 number-of-nodes
 2
 100
-2.0
+4.0
 1
 1
 NIL
 HORIZONTAL
 
 SLIDER
-31
-211
-203
-244
+18
+175
+190
+208
 number-of-ants
 number-of-ants
 1
 100
-2.0
+10.0
 1
 1
 NIL
 HORIZONTAL
 
 SLIDER
-29
-276
-201
-309
+16
+240
+188
+273
 radius
 radius
 0
 100
-23.0
+20.0
 1
 1
 NIL
 HORIZONTAL
 
 OUTPUT
-5
-323
-285
-459
+706
+13
+1250
+467
 11
+
+BUTTON
+113
+16
+255
+49
+NIL
+reactive-path-setup
+NIL
+1
+T
+OBSERVER
+NIL
+NIL
+NIL
+NIL
+1
 
 @#$#@#$#@
 ## WHAT IS IT?
