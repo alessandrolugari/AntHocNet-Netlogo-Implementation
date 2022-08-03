@@ -49,13 +49,17 @@ to create-network
     setxy random-xcor random-ycor
     set label who
     set shape "circle"
-  ]
-
-  ask nodes [
     create-links-with other nodes in-radius radius
-
   ]
+
+  ;ask nodes [
+  ;  create-links-with other nodes in-radius radius
+  ;]
 end
+
+;;;;;;;;;;;;;;;;;;
+; thing interesting -----> ant release pheromone when moving from a node to another one
+;;;;;;;;;;;;;;;;;;
 
 to reactive-path-setup
   ; generate ants
@@ -66,9 +70,12 @@ to reactive-path-setup
     set visited-nodes []
   ]
 
-
   ; repeat for each node
-  ask nodes [
+  ask nodes with [count link-neighbors = 0] [
+    set routing-table table:make
+  ]
+
+  ask nodes with [count link-neighbors > 0] [
     ; create routing table for each node
     set routing-table table:make
     set routing-table-tmp table:make
@@ -88,6 +95,7 @@ to reactive-path-setup
       ask nodes [
         if self != source [
           set destination-list lput self destination-list
+
           ifelse table:has-key? routing-table-tmp [who] of self [
             table:put routing-table-tmp [who] of self table:get routing-table-tmp [who] of self
           ][
@@ -100,16 +108,14 @@ to reactive-path-setup
       foreach destination-list [
         dest ->
 
+        ;output-print word "looking for dest " dest
         set current-node source
 
         set visited-nodes []
         set visited-nodes lput current-node visited-nodes
-        ; if dest has no links --> skip and leave an empty routing table
 
-        ;output-print [link-neighbors] of dest
         while [current-node != dest] [
           ;output-print word "current-node -> " current-node
-
           set current-node one-of [link-neighbors] of current-node
           set visited-nodes lput current-node visited-nodes
 
@@ -146,13 +152,13 @@ to reactive-path-setup
 end
 @#$#@#$#@
 GRAPHICS-WINDOW
-266
-15
-703
-453
+199
+10
+597
+409
 -1
 -1
-13.0
+11.82
 1
 10
 1
@@ -215,7 +221,7 @@ number-of-nodes
 number-of-nodes
 2
 100
-4.0
+6.0
 1
 1
 NIL
@@ -245,24 +251,24 @@ radius
 radius
 0
 100
-20.0
+14.0
 1
 1
 NIL
 HORIZONTAL
 
 OUTPUT
-706
-13
-1250
-467
+606
+10
+1245
+315
 11
 
 BUTTON
-113
-16
-255
-49
+79
+10
+193
+43
 NIL
 reactive-path-setup
 NIL
