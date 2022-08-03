@@ -20,12 +20,15 @@ ants-own [
 
 globals [
   routing-table-tmp
+  max-hops
 ]
 ; buttons
 
 to setup
   clear-all
   reset-ticks
+
+  set max-hops 50
 
   create-network
 end
@@ -73,10 +76,14 @@ to reactive-path-setup
   ; repeat for each node
   ask nodes with [count link-neighbors = 0] [
     set routing-table table:make
+    ;output-print word "routing table of node " self
+    ;output-print routing-table
   ]
 
   ask nodes with [count link-neighbors > 0] [
     ; create routing table for each node
+    ;output-print word "node " self
+
     set routing-table table:make
     set routing-table-tmp table:make
 
@@ -84,6 +91,7 @@ to reactive-path-setup
       ; set source node and move ants to it
       ;output-print ""
       ;output-print word "ant " [who] of self
+
       if member? myself visited-nodes = false [
         move-to myself
         set current-node myself
@@ -105,6 +113,9 @@ to reactive-path-setup
         ]
       ]
 
+      ;output-print word "source " source
+      ;output-print word "dest-list " destination-list
+
       foreach destination-list [
         dest ->
 
@@ -114,7 +125,8 @@ to reactive-path-setup
         set visited-nodes []
         set visited-nodes lput current-node visited-nodes
 
-        while [current-node != dest] [
+        let cnt-hops 0
+        while [current-node != dest and cnt-hops < max-hops] [
           ;output-print word "current-node -> " current-node
           set current-node one-of [link-neighbors] of current-node
           set visited-nodes lput current-node visited-nodes
@@ -139,14 +151,15 @@ to reactive-path-setup
               table:put routing-table-tmp [who] of dest visited-nodes
             ]
           ]
+          set cnt-hops cnt-hops + 1
         ]
 
       ]
     ]
 
     ;set routing-table routing-table-tmp
-    output-print word "last routing table of node " self
-    output-print routing-table-tmp
+    ;output-print word "routing table of node " self
+    ;output-print routing-table-tmp
   ]
 
 end
@@ -251,7 +264,7 @@ radius
 radius
 0
 100
-14.0
+8.0
 1
 1
 NIL
