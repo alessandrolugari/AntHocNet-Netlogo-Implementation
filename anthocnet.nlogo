@@ -1,7 +1,14 @@
+extensions [table]
+
 breed [nodes node]
 breed [ants ant]
 
 globals [maxhops]
+
+nodes-own [
+  routing-table ; contains paths to reach other nodes
+  pheromone-table ; contains value of pheromone to all destinations
+]
 
 to setup
   ca
@@ -9,7 +16,7 @@ to setup
   reset-timer
 
   ; setting globals
-  set maxhops 5000
+  set maxhops 10
 
   create-nodes number-of-nodes [
     set size 2
@@ -36,65 +43,84 @@ to setup
   ]
 end
 
-to distance-between-linked-nodes
-  ask nodes [
-    ask link-neighbors [
-      ;output-print (word "myself: " myself " self: " self)
-      output-print (word "distance -> " myself "-" self " => " distance myself)
-    ]
-  ]
-end
-
-to move-ants
+to reactive-path-setup
   ; move to start-node
-  let start-node one-of nodes
-  let destination-node one-of nodes with [ who != [who] of start-node]
 
-  ask ants [
-    move-to start-node
+  ask nodes [
+    ; initialize tables
+    set routing-table table:make
+    set pheromone-table table:make
+  ]
 
-    output-print (word "start-node -> " start-node " destination-node -> " destination-node " ant -> " self)
+  ask nodes with [count link-neighbors > 0][
+    let start-node self
 
-    let current-node start-node
-    let hops 0
-    let visited-nodes []
-    let exit-while true
-    while [(current-node != destination-node or hops < maxhops) and exit-while = true][
-      if hops > maxhops [
-        output-print "reached max number of hops"
-        set exit-while false
-      ]
-      ifelse current-node = destination-node [
-        output-print (word "visited-nodes -> " visited-nodes)
-        set exit-while false
-      ][
-        ; move ants from current-node to destination, if destination not in neighbors, move to a random one
-        output-print (word "current-node -> " current-node " [link-neighbors] of current-node -> " [link-neighbors] of current-node)
-        ifelse member? destination-node [link-neighbors] of current-node [
-          ; move ant to destination
-          move-between-two-nodes self destination-node
-          set current-node destination-node
-          set visited-nodes lput destination-node visited-nodes
-        ][
-          ; if destination node is not directly reachable from current-node (no destination in link-neighborhors)
-          let next-hop one-of [link-neighbors] of current-node
-          let start-time timer
-          move-between-two-nodes self next-hop
-          let time-delta timer - start-time
-          set visited-nodes lput current-node visited-nodes
-          set current-node next-hop
+    ask nodes with [who != [who] of start-node] [
+      ask ants [
+        move-to start-node
+        let destination-node myself
+
+        ;output-print (word "start-node -> " start-node " destination-node -> " destination-node " ant -> " self)
+
+        let current-node start-node
+        let hops 0
+        let visited-nodes []
+        let exit-while true
+
+        while [(current-node != destination-node or hops < maxhops) and exit-while = true][
+          if hops > maxhops [
+            output-print "reached max number of hops"
+            set exit-while false
+          ]
+          ifelse current-node = destination-node [
+            set visited-nodes lput destination-node visited-nodes
+            ;output-print (word "visited-nodes -> " visited-nodes)
+            set exit-while false
+
+            ; update routing table
+            ifelse table:has-key? [routing-table] of start-node [who] of destination-node [
+              ; already existing entry in the table, append path
+              let tmp-visited-nodes table:get [routing-table] of start-node [who] of destination-node
+              set tmp-visited-nodes lput visited-nodes tmp-visited-nodes
+              table:put [routing-table] of start-node [who] of destination-node tmp-visited-nodes
+            ][
+              ; initialize entry for the destination
+              let list-tmp [] ; create list of list
+              set list-tmp lput visited-nodes list-tmp
+              table:put [routing-table] of start-node [who] of destination-node list-tmp
+            ]
+          ][
+            ; current-node is not destination-node
+            ; move ants from current-node to destination, if destination not in neighbors, move to a random one
+            ifelse member? destination-node [link-neighbors] of current-node [
+              ; move ant to destination
+              move-between-two-nodes destination-node
+              set visited-nodes lput current-node visited-nodes
+              set current-node destination-node
+            ][
+              ; if destination node is not directly reachable from current-node (no destination in link-neighborhors)
+              let next-hop one-of [link-neighbors] of current-node
+              let start-time timer
+              move-between-two-nodes next-hop
+              let time-delta timer - start-time
+              set visited-nodes lput current-node visited-nodes
+              set current-node next-hop
+            ]
+          ]
+          set hops hops + 1
+          ;output-print (word "time delta " time-delta)
+        ]
+        if exit-while = true[
+          output-print word "visited-nodes -> " visited-nodes
         ]
       ]
-      set hops hops + 1
-      ;output-print (word "time delta " time-delta)
     ]
-    if exit-while = true[
-      output-print word "visited-nodes -> " visited-nodes
-    ]
+
+    output-print (word "node " self " routing-table " routing-table)
   ]
 end
 
-to move-between-two-nodes [fwd-ant dst]
+to move-between-two-nodes [dst]
   face dst
   while [distance dst > 1] [
     ifelse distance dst < 1 [
@@ -142,7 +168,7 @@ radius
 radius
 1
 100
-11.0
+18.0
 1
 1
 m
@@ -155,23 +181,6 @@ BUTTON
 60
 NIL
 setup
-NIL
-1
-T
-OBSERVER
-NIL
-NIL
-NIL
-NIL
-1
-
-BUTTON
-835
-99
-1067
-132
-NIL
-distance-between-linked-nodes
 NIL
 1
 T
@@ -198,7 +207,7 @@ number-of-nodes
 number-of-nodes
 1
 100
-12.0
+4.0
 1
 1
 NIL
@@ -222,10 +231,10 @@ HORIZONTAL
 BUTTON
 950
 30
-1050
+1107
 63
 NIL
-move-ants
+reactive-path-setup
 NIL
 1
 T
