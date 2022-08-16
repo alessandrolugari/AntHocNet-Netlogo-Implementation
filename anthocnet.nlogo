@@ -3,12 +3,29 @@ extensions [table]
 breed [nodes node]
 breed [ants ant]
 
-globals [maxhops]
+globals [
+  maxhops
+  maxtriptime
+  ; params for reactive path setup
+  alpha
+  gamma
+]
 
 nodes-own [
   routing-table ; contains paths to reach other nodes
   pheromone-table ; contains value of pheromone to all destinations
 ]
+
+ants-own [
+  speed ; 0 <= speed <= 1 if below 1 the ant is slower, 1 equals to normal velocity
+]
+
+to clr
+  ; ca
+  clear-output
+  reset-ticks
+  reset-timer
+end
 
 to setup
   ca
@@ -16,7 +33,10 @@ to setup
   reset-timer
 
   ; setting globals
-  set maxhops 10
+  set maxhops 50
+  set maxtriptime 50 ; seconds
+  set alpha 0.7
+  set gamma 0.7
 
   create-nodes number-of-nodes [
     set size 2
@@ -24,7 +44,6 @@ to setup
     set label who
     set shape "circle"
     create-links-with other nodes in-radius radius
-    ;create-links-with other nodes
   ]
 
   create-ants number-of-ants [
@@ -41,9 +60,14 @@ to setup
       die
     ]
   ]
+
+  ask ants [
+    set speed (1 - (random 7)/(10)) ; max decrease in speed is 0.7 in order to have a minimum speed = 0.3
+  ]
 end
 
 to reactive-path-setup
+  output-print "reactive-path-setup"
   ; move to start-node
 
   ask nodes [
@@ -61,15 +85,14 @@ to reactive-path-setup
         let destination-node myself
 
         ;output-print (word "start-node -> " start-node " destination-node -> " destination-node " ant -> " self)
-
         let current-node start-node
         let hops 0
         let visited-nodes []
         let exit-while true
 
+        let total-hop-time 0
         while [(current-node != destination-node or hops < maxhops) and exit-while = true][
           if hops > maxhops [
-            output-print "reached max number of hops"
             set exit-while false
           ]
           ifelse current-node = destination-node [
@@ -77,9 +100,10 @@ to reactive-path-setup
             ;output-print (word "visited-nodes -> " visited-nodes)
             set exit-while false
 
-            ; update routing table
+            ;output-print word "total-hop-time " total-hop-time
+            ; update routing table only if hops/time are below certain threshold
             ifelse table:has-key? [routing-table] of start-node [who] of destination-node [
-              ; already existing entry in the table, append path
+              ; already existing entry in the table, append path only if below time threshold in order to discard bad paths
               let tmp-visited-nodes table:get [routing-table] of start-node [who] of destination-node
               set tmp-visited-nodes lput visited-nodes tmp-visited-nodes
               table:put [routing-table] of start-node [who] of destination-node tmp-visited-nodes
@@ -88,21 +112,26 @@ to reactive-path-setup
               let list-tmp [] ; create list of list
               set list-tmp lput visited-nodes list-tmp
               table:put [routing-table] of start-node [who] of destination-node list-tmp
-            ]
+          ]
           ][
             ; current-node is not destination-node
-            ; move ants from current-node to destination, if destination not in neighbors, move to a random one
             ifelse member? destination-node [link-neighbors] of current-node [
               ; move ant to destination
-              move-between-two-nodes destination-node
+              let start-time timer
+              move-to-node self destination-node
+              let hop-time timer - start-time
+
+              set total-hop-time total-hop-time + hop-time
               set visited-nodes lput current-node visited-nodes
               set current-node destination-node
             ][
               ; if destination node is not directly reachable from current-node (no destination in link-neighborhors)
               let next-hop one-of [link-neighbors] of current-node
               let start-time timer
-              move-between-two-nodes next-hop
-              let time-delta timer - start-time
+              move-to-node self next-hop
+              let hop-time timer - start-time
+
+              set total-hop-time total-hop-time + hop-time
               set visited-nodes lput current-node visited-nodes
               set current-node next-hop
             ]
@@ -110,24 +139,84 @@ to reactive-path-setup
           set hops hops + 1
           ;output-print (word "time delta " time-delta)
         ]
-        if exit-while = true[
-          output-print word "visited-nodes -> " visited-nodes
+      ]
+    ]
+  ]
+
+  ask nodes [
+    let start-node self
+    ask nodes with [who != [who] of start-node][
+      let destination-node self
+      ask ants[
+        move-to destination-node
+        if table:has-key? [routing-table] of start-node [who] of destination-node[
+          let list-path table:get [routing-table] of start-node [who] of destination-node ; there could be multiple paths
+          let path one-of list-path
+          ;output-print (word "start " start-node " destination " destination-node " path " path)
+          backtrack-ant-update-pheromone self path
         ]
       ]
     ]
+  ]
 
-    output-print (word "node " self " routing-table " routing-table)
+  ask nodes [
+    output-print (word "routing-table of node " self)
+    output-print routing-table
+    output-print (word "pheromone-table of node " self)
+    output-print pheromone-table
+    output-print ""
   ]
 end
 
-to move-between-two-nodes [dst]
-  face dst
-  while [distance dst > 1] [
-    ifelse distance dst < 1 [
-      move-to dst
-      stop
+to backtrack-ant-update-pheromone [backward-ant visited-nodes]
+  let last-node last visited-nodes
+  set visited-nodes but-last visited-nodes
+
+  let Tmac (number-of-packets-in-queue + 1) * avg-time-to-send-pkt
+  let total-time 0
+  let cnt-hop 1
+  while [length visited-nodes > 1][ ; if length = 1 means that the list contain only the start node
+    ;output-print word "debugging backtrack -- visited nodes " visited-nodes
+    let previous-node last visited-nodes
+
+    let start-time timer
+    move-to-node self previous-node
+    let hop-time timer - start-time ; this represent time to send pkt - in this case is the ant itself
+
+
+    set total-time total-time + start-time
+    ; update Tmaxc
+    set Tmac (alpha * Tmac) + ((1 - alpha) * hop-time)
+
+    ; update pheromone value
+    let pheromone-value ((total-time + ((cnt-hop)*(Thop)))/(2))^(-1)
+    ;output-print word "pheromone-value " pheromone-value
+    ifelse table:has-key? [pheromone-table] of previous-node [who] of last-node [
+      let tmp-pheromone table:get [pheromone-table] of previous-node [who] of last-node
+      set tmp-pheromone (gamma * tmp-pheromone) + ((1 - gamma) * pheromone-value)
+      table:put [pheromone-table] of previous-node [who] of last-node tmp-pheromone
     ][
-      fd 1
+      ; no pheromone value - add entry to the table
+      table:put [pheromone-table] of previous-node [who] of last-node pheromone-value
+    ]
+
+    set cnt-hop cnt-hop + 1
+    set last-node previous-node
+    set visited-nodes but-last visited-nodes
+
+  ]
+end
+
+to move-to-node [tmp-ant dst]
+  ask tmp-ant[
+    face dst
+    while [distance dst > 1] [
+      ifelse distance dst < 1 [
+        move-to dst
+        stop
+      ][
+        fd 1 - speed
+      ]
     ]
   ]
 end
@@ -160,25 +249,25 @@ ticks
 30.0
 
 SLIDER
-619
-22
-791
-55
+610
+60
+809
+93
 radius
 radius
 1
 100
-18.0
+15.0
 1
 1
 m
 HORIZONTAL
 
 BUTTON
-836
-27
-903
-60
+611
+18
+678
+51
 NIL
 setup
 NIL
@@ -192,32 +281,32 @@ NIL
 1
 
 OUTPUT
-605
-177
-1718
-599
+610
+187
+1723
+596
 12
 
 SLIDER
-622
-75
-794
-108
+611
+99
+811
+132
 number-of-nodes
 number-of-nodes
 1
 100
-4.0
+7.0
 1
 1
 NIL
 HORIZONTAL
 
 SLIDER
-624
-122
-796
-155
+611
+139
+811
+172
 number-of-ants
 number-of-ants
 1
@@ -229,12 +318,74 @@ NIL
 HORIZONTAL
 
 BUTTON
-950
-30
-1107
-63
+862
+20
+1019
+53
 NIL
 reactive-path-setup
+NIL
+1
+T
+OBSERVER
+NIL
+NIL
+NIL
+NIL
+1
+
+SLIDER
+862
+60
+1087
+93
+number-of-packets-in-queue
+number-of-packets-in-queue
+2
+30
+2.0
+1
+1
+NIL
+HORIZONTAL
+
+SLIDER
+862
+101
+1086
+134
+avg-time-to-send-pkt
+avg-time-to-send-pkt
+0.1
+1
+0.5
+0.01
+1
+s
+HORIZONTAL
+
+SLIDER
+863
+142
+1086
+175
+Thop
+Thop
+0.001
+0.7
+0.003
+0.001
+1
+NIL
+HORIZONTAL
+
+BUTTON
+1705
+13
+1870
+96
+NIL
+clr
 NIL
 1
 T
