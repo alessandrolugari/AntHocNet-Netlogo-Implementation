@@ -2,6 +2,9 @@ extensions [table]
 
 breed [nodes node]
 breed [ants ant]
+breed [messages message]
+
+; ants and messages behave in a similar way
 
 globals [
   maxhops
@@ -25,6 +28,12 @@ to clr
   clear-output
   reset-ticks
   reset-timer
+
+  ask nodes [
+    ; initialize tables
+    set routing-table table:make
+    set pheromone-table table:make
+  ]
 end
 
 to setup
@@ -88,17 +97,17 @@ to reactive-path-setup
         let current-node start-node
         let hops 0
         let visited-nodes []
-        let exit-while true
+        let exit-while false
 
         let total-hop-time 0
-        while [(current-node != destination-node or hops < maxhops) and exit-while = true][
+        while [(current-node != destination-node or hops < maxhops) and exit-while = false][
           if hops > maxhops [
-            set exit-while false
+            set exit-while true
           ]
           ifelse current-node = destination-node [
             set visited-nodes lput destination-node visited-nodes
             ;output-print (word "visited-nodes -> " visited-nodes)
-            set exit-while false
+            set exit-while true
 
             ;output-print word "total-hop-time " total-hop-time
             ; update routing table only if hops/time are below certain threshold
@@ -207,8 +216,9 @@ to backtrack-ant-update-pheromone [backward-ant visited-nodes]
   ]
 end
 
-to move-to-node [tmp-ant dst]
-  ask tmp-ant[
+to move-to-node [tmp-agent dst]
+  ; tmp-agent can be either ant or message
+  ask tmp-agent[
     face dst
     while [distance dst > 1] [
       ifelse distance dst < 1 [
@@ -218,6 +228,50 @@ to move-to-node [tmp-ant dst]
         fd 1 - speed
       ]
     ]
+  ]
+end
+
+to send-message
+  create-messages number-of-ants [
+    set size 1
+    set shape "bug"
+  ]
+  ; implementation of stocastic data routing
+  let current-node one-of nodes
+  let destination-node one-of nodes with [who != [who] of current-node]
+
+  ; evaluate probabilities by normalizing
+  let msg 0
+  ask messages [
+    set msg self
+    move-to current-node
+  ]
+
+  let cnt-hops 0
+  let exit-while false
+  while [current-node != destination-node][
+    ifelse member? destination-node [link-neighbors] of current-node [
+      ; if destination is in neighbors of the current node
+      move-to-node msg destination-node
+      set exit-while true
+    ][
+      ; destination-node is not in the neighborhood of current-node
+      if table:has-key? [routing-table] of current-node [who] of destination-node [
+        let paths-list table:get [routing-table] of current-node [who] of destination-node
+
+        ifelse length paths-list = 1 [
+          ; no multiple paths
+          let path first paths-list
+          let current node first path
+          move-to-node msg current-node
+        ][
+          ; multiple paths
+
+        ]
+      ]
+    ]
+
+    set cnt-hops cnt-hops + 1
   ]
 end
 @#$#@#$#@
@@ -386,6 +440,23 @@ BUTTON
 96
 NIL
 clr
+NIL
+1
+T
+OBSERVER
+NIL
+NIL
+NIL
+NIL
+1
+
+BUTTON
+1128
+20
+1254
+53
+NIL
+send-message
 NIL
 1
 T
