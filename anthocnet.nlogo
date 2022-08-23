@@ -1,4 +1,7 @@
-extensions [table]
+extensions [
+  table
+  rnd
+]
 
 breed [nodes node]
 breed [ants ant]
@@ -21,6 +24,10 @@ nodes-own [
 
 ants-own [
   speed ; 0 <= speed <= 1 if below 1 the ant is slower, 1 equals to normal velocity
+]
+
+messages-own [
+  speed
 ]
 
 to clr
@@ -71,8 +78,9 @@ to setup
   ]
 
   ask ants [
-    set speed (1 - (random 7)/(10)) ; max decrease in speed is 0.7 in order to have a minimum speed = 0.3
+    set speed (1 - random-float 0.7) ; max decrease in speed is 0.7 in order to have a minimum speed = 0.3
   ]
+
 end
 
 to reactive-path-setup
@@ -168,12 +176,14 @@ to reactive-path-setup
     ]
   ]
 
-  ask nodes [
-    output-print (word "routing-table of node " self)
-    output-print routing-table
-    output-print (word "pheromone-table of node " self)
-    output-print pheromone-table
-    output-print ""
+  if debug [
+    ask nodes [
+      output-print (word "routing-table of node " self)
+      output-print routing-table
+      output-print (word "pheromone-table of node " self)
+      output-print pheromone-table
+      output-print ""
+    ]
   ]
 end
 
@@ -232,15 +242,18 @@ to move-to-node [tmp-agent dst]
 end
 
 to send-message
-  create-messages number-of-ants [
+  ask messages [die]
+  create-messages number-of-messages [
     set size 1
-    set shape "bug"
+    set shape "letter sealed"
   ]
   ; implementation of stocastic data routing
   let current-node one-of nodes
   let destination-node one-of nodes with [who != [who] of current-node]
 
-  ; evaluate probabilities by normalizing
+  ;let current-node one-of nodes with [who = 1]
+  ;let destination-node one-of nodes with [who = 2]
+
   let msg 0
   ask messages [
     set msg self
@@ -249,9 +262,14 @@ to send-message
 
   let cnt-hops 0
   let exit-while false
-  while [current-node != destination-node][
+  while [current-node != destination-node or cnt-hops < maxhops][
+    if debug [
+      output-print (word "current-node " current-node " destination-node " destination-node)
+      output-print (word "link-neighbors of current-node " current-node " -> " [link-neighbors] of current-node)
+    ]
     ifelse member? destination-node [link-neighbors] of current-node [
       ; if destination is in neighbors of the current node
+      set current-node destination-node
       move-to-node msg destination-node
       set exit-while true
     ][
@@ -266,12 +284,36 @@ to send-message
           move-to-node msg current-node
         ][
           ; multiple paths
+          let probabilities []
+          let sum-pheromone 0
 
+          ask [link-neighbors] of current-node [
+            ; look for neighbors with a path to destination-node
+            if table:has-key? [routing-table] of self [who] of destination-node [
+              let pheromone table:get [pheromone-table] of current-node [who] of self ; from pheromone-table of current node pick the entry of the neighbor
+              set sum-pheromone sum-pheromone + (pheromone ^ 2)
+            ]
+          ]
+
+          ; once i have the sum of pheromone - needed for normalization - i can ask to same nodes which one to pick
+          ask [link-neighbors] of current-node [
+            if table:has-key? [routing-table] of self [who] of destination-node[
+              let pheromone-of-neighbor table:get [pheromone-table] of current-node [who] of self
+              let pair []
+              set pair lput [who] of self pair ; first the id node
+              set pair lput ((pheromone-of-neighbor ^ 2) / sum-pheromone) pair ; then the pheromone value representing the weight
+              set probabilities lput pair probabilities
+            ]
+          ]
+
+          set current-node node first rnd:weighted-one-of-list probabilities [ [p] -> last p ]
+          move-to-node msg current-node
         ]
       ]
     ]
 
     set cnt-hops cnt-hops + 1
+    print "loop nel while del routing"
   ]
 end
 @#$#@#$#@
@@ -467,6 +509,47 @@ NIL
 NIL
 1
 
+SLIDER
+1129
+62
+1321
+95
+number-of-messages
+number-of-messages
+1
+100
+1.0
+1
+1
+NIL
+HORIZONTAL
+
+SLIDER
+1130
+107
+1342
+140
+number-of-starting-node
+number-of-starting-node
+1
+number-of-nodes
+1.0
+1
+1
+NIL
+HORIZONTAL
+
+SWITCH
+1768
+120
+1871
+153
+debug
+debug
+1
+1
+-1000
+
 @#$#@#$#@
 ## WHAT IS IT?
 
@@ -659,6 +742,30 @@ false
 0
 Polygon -7500403 true true 150 210 135 195 120 210 60 210 30 195 60 180 60 165 15 135 30 120 15 105 40 104 45 90 60 90 90 105 105 120 120 120 105 60 120 60 135 30 150 15 165 30 180 60 195 60 180 120 195 120 210 105 240 90 255 90 263 104 285 105 270 120 285 135 240 165 240 180 270 195 240 210 180 210 165 195
 Polygon -7500403 true true 135 195 135 240 120 255 105 255 105 285 135 285 165 240 165 195
+
+letter opened
+false
+0
+Rectangle -7500403 true true 30 90 270 225
+Rectangle -16777216 false false 30 90 270 225
+Line -16777216 false 150 30 270 105
+Line -16777216 false 30 105 150 30
+Line -16777216 false 270 225 181 161
+Line -16777216 false 30 225 119 161
+Polygon -6459832 true false 30 105 150 30 270 105 150 180
+Line -16777216 false 30 105 270 105
+Line -16777216 false 270 105 150 180
+Line -16777216 false 30 105 150 180
+
+letter sealed
+false
+0
+Rectangle -7500403 true true 30 90 270 225
+Rectangle -16777216 false false 30 90 270 225
+Line -16777216 false 270 105 150 180
+Line -16777216 false 30 105 150 180
+Line -16777216 false 270 225 181 161
+Line -16777216 false 30 225 119 161
 
 line
 true
