@@ -28,7 +28,7 @@ This algorithm shows an hybrid approach, having both reactive and proactive comp
 
 `number-of-proactive-ants`  number of ants created during the maintenance path phase
 
-# other variables
+## other variables
 `node-speed`    value between 0 and 1 used for represent node mobility
 
 `n-links`   number of links to be killed when `kill-n-random-link` is called
@@ -46,3 +46,5 @@ The routing is stochastic, based on pheromone values, the formula is designed to
 # Proactive Path Maintenance
 While a data session is running, once every `sending-rate` packets, `number-of-proactive-ants` ants are sent in the net.
 Their task is both updating pheromone values (the move can move so the value can change), but also with a small probability, they can explore the network in order to look for new path connecting the nodes.
+
+Those ants move through the nodes using the same formula as packet during routing, but in way such that the paths are sampled more evenly (by not squaring the pheromone values).
