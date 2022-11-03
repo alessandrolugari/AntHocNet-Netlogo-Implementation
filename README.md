@@ -13,6 +13,7 @@ This algorithm shows an hybrid approach, having both reactive and proactive comp
 
 ## setup variables
 `radius` if nodes inside radius they make link
+
 `number-of-nodes`   number of nodes instanciated
 `number-of-ants`    number of _reactive_ ants used for `reactive-path-setup`
 `max-hops`  upper bound of hops used when moving through nodes in the net
