@@ -11,6 +11,7 @@ breed [messages message]
 nodes-own [
   routing-table ; contains paths to reach other nodes
   pheromone-table ; contains value of pheromone to all destinations
+  direction
 ]
 
 ants-own [
@@ -52,13 +53,6 @@ globals [
 ]
 
 to reset-metrics
-  ;set avg-hops-delivered 0
-  ;set avg-hops-total 0
-  ;set avg-send-time 0
-  ;set avg-pkt-loss 0
-  ;set pkt-loss-ratio 0
-  ;set pkt-loss-cnt 0
-  ;set pkt-delivered-cnt 0
   setting-globals
   ;clear-all-plots
 end
@@ -71,7 +65,7 @@ end
 
 to setting-globals
   set maxhops max-hops
-  set maxtriptime 50 ; seconds
+  set maxtriptime 50
   set packet-counter 0
 
   set alpha 0.7
@@ -93,7 +87,7 @@ end
 ; utility functions
 to export-all-plots-separately
   let MODEL "radius-20--nodes-50--maxhops-50"
-  let PATH (word "/home/alessandro/Desktop/netlogo_plots_csv/" MODEL "/")
+  let PATH (word "<insert path>" MODEL "/")
 
   export-plot "avg # hops for delivered packets" (word PATH "avg_hops_delivered_pkt_" MODEL ".csv" )
   export-plot "avg # hops for all packets" (word PATH "avg_hops_all_pkt_" MODEL ".csv" )
@@ -127,6 +121,7 @@ to move-nodes
   ]
   ask nodes [
     set heading random 360
+    ;set heading direction
     fd node-speed
   ]
 
@@ -210,27 +205,31 @@ to move-to-node [tmp-agent dst]
   ]
 end
 
-to kill-random-link
-  let node1 0
-  let node2 0
-  ask one-of links [
-    set node1 [end1] of self
-    set node2 [end2] of self
-    die
-  ]
+to kill-n-random-link
+  repeat n-links [
+    let node1 0
+    let node2 0
+    ask one-of links [
+      set node1 [end1] of self
+      set node2 [end2] of self
+      die
+    ]
 
-  ask node1 [
-    table:remove [pheromone-table] of self [who] of node2
-    table:remove [routing-table] of self [who] of node2
-  ]
+    ask node1 [
+      table:remove [pheromone-table] of self [who] of node2
+      table:remove [routing-table] of self [who] of node2
+    ]
 
-  ask node2 [
-    table:remove [pheromone-table] of self [who] of node1
-    table:remove [routing-table] of self [who] of node1
+    ask node2 [
+      table:remove [pheromone-table] of self [who] of node1
+      table:remove [routing-table] of self [who] of node1
+    ]
   ]
 end
 
 to update-metrics [agent current-node destination-node cnt-hops send-time]
+  set avg-hops-total avg-hops-total + ((cnt-hops - avg-hops-total) / packet-counter)
+
   if [breed] of agent = messages[
     ifelse current-node != destination-node [
       set pkt-loss-cnt pkt-loss-cnt + 1
@@ -261,11 +260,16 @@ to setup
   ]
   create-nodes number-of-nodes [
     set size 2
-    ;set color blue
+    set color magenta + 2
     setxy random-xcor random-ycor
     set label who
     set shape "circle"
     create-links-with other nodes in-radius radius
+
+  ]
+
+  ask nodes [
+    ;set direction random 360
   ]
 
   ask links [
@@ -386,16 +390,6 @@ to reactive-path-setup
     ]
   ]
 
-  ; cleaning routing table: remove paths too long in terms of hops
-  ask nodes [
-    ; for each destination pick the shortest path (L_best) and keep the paths such that their length is not grater than 1.5 * L_best
-    foreach table:keys [routing-table] of self [
-      destination ->
-
-
-    ]
-  ]
-
   if debug-reactive [
     ask nodes [
       output-print (word "[reactive] routing-table of node " self)
@@ -416,8 +410,9 @@ to backtrack-ant-update-pheromone [backward-ant visited-nodes]
     output-print word "[backtrack] visited-nodes " visited-nodes
   ]
   reset-timer
+  let last-node 0
 
-  let last-node last visited-nodes
+  set last-node last visited-nodes
   set visited-nodes but-last visited-nodes
 
   let Tmac (number-of-packets-in-queue + 1) * avg-time-to-send-pkt
@@ -433,6 +428,7 @@ to backtrack-ant-update-pheromone [backward-ant visited-nodes]
 
     set total-time total-time + hop-time
     ;set total-time 0.03
+
     ; update Tmaxc
     set Tmac (alpha * Tmac) + ((1 - alpha) * hop-time)
 
@@ -482,10 +478,13 @@ to send-message
   let destination-node 0
 
   set destination-node one-of nodes with [who != [who] of source-node]
-  ;set destination-node one-of nodes with [who != [who] of source-node and member? who [who] of [link-neighbors] of source-node = false and count [link-neighbors] of self > 0]
-  ;set destination-node one-of nodes with [who != [who] of source-node and nw:distance-to source-node != false]
 
-  repeat number-of-messages [
+  set destination-node one-of nodes with [who != [who] of source-node and nw:distance-to source-node != false]
+
+  if destination-node != nobody [
+    ask source-node [ set color black ]
+    ask destination-node [ set color red ]
+    ask nodes with [who != [who] of source-node and who != [who] of destination-node ][ set color magenta + 2 ]
     let msg 0
     ask messages [
       set msg self
@@ -520,18 +519,16 @@ to send-message
       ]
     ]
 
-    if packet-counter mod 10000 = 0 [
-      stop
+    ;if packet-counter mod 10000 = 0 [
+    ;  stop
+    ;]
+
+    ask messages [die]
+
+    if show-routing-params [
+      output-print (word "avg-hops-delivered " avg-hops-delivered " avg-send-time " avg-send-time " avg-pkt-loss " pkt-loss-ratio)
     ]
   ]
-
-  ask messages [die]
-
-  if show-routing-params [
-    output-print (word "avg-hops-delivered " avg-hops-delivered " avg-send-time " avg-send-time " avg-pkt-loss " pkt-loss-ratio)
-  ]
-
-  update-plots
 end
 
 to proactive-path-maintenance [agents src dst]
@@ -562,23 +559,32 @@ to random-search [agent source-node destination-node]
   let visited-nodes []
   let current-node source-node
   let cnt-hops 0
+  let start-send-time timer
 
-  ;output-print (word "agent " agent " souce-node " source-node " destination-node " destination-node)
   while [current-node != destination-node and cnt-hops < maxhops][
-    ask one-of [link-neighbors] of current-node [
-      set visited-nodes lput self visited-nodes
-      ask agent [ ; probably viene l'errore poichè agent = node e node non ce l'ha l'attributo speed, devo controllare che agent sia ants oppure messages
-        move-to-node self myself
-      ]
+    if count [link-neighbors] of current-node > 0 [
+      ask one-of [link-neighbors] of current-node [
+        set visited-nodes lput self visited-nodes
+        ask agent [
+          move-to-node self myself
+        ]
 
-      set current-node self
+        set current-node self
 
-      if current-node = destination-node and [breed] of agent = ants [
-        backtrack-ant-update-pheromone agent visited-nodes
+        if current-node = destination-node and [breed] of agent = ants [
+          backtrack-ant-update-pheromone agent visited-nodes
+        ]
       ]
     ]
 
     set cnt-hops cnt-hops + 1
+  ]
+
+  if [breed] of agent = messages [
+    let send-time timer - start-send-time
+    set packet-counter packet-counter + 1
+
+    update-metrics agent current-node destination-node cnt-hops send-time
   ]
 end
 
@@ -693,13 +699,22 @@ to routing [agent source-node destination-node]
     ]
   ]
 
-  ;output-print (word "src " source-node " dst " destination-node " visited-nodes " visited-nodes)
+  if [breed] of agent = messages[
+    ifelse current-node = destination-node [
+      let send-time timer - start-send-time
+      set packet-counter packet-counter + 1
 
-  let send-time timer - start-send-time
-  set packet-counter packet-counter + 1
-  set avg-hops-total avg-hops-total + ((cnt-hops - avg-hops-total) / packet-counter)
+      update-metrics agent current-node destination-node cnt-hops send-time
 
-  update-metrics agent current-node destination-node cnt-hops send-time
+      if debug-routing [
+        output-print (word "message delivered correctly. list of visited nodes: " visited-nodes)
+      ]
+    ][
+      random-search agent source-node destination-node
+    ]
+  ]
+
+  update-plots
 end
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 @#$#@#$#@
@@ -739,7 +754,7 @@ radius
 radius
 1
 100
-20.0
+12.0
 1
 1
 NIL
@@ -748,7 +763,7 @@ HORIZONTAL
 BUTTON
 768
 10
-899
+902
 43
 NIL
 setup
@@ -777,8 +792,8 @@ SLIDER
 number-of-nodes
 number-of-nodes
 1
-100
-70.0
+300
+122.0
 1
 1
 NIL
@@ -793,16 +808,16 @@ number-of-ants
 number-of-ants
 1
 100
-5.0
+1.0
 1
 1
 NIL
 HORIZONTAL
 
 BUTTON
-951
+919
 10
-1139
+1107
 43
 NIL
 reactive-path-setup
@@ -817,9 +832,9 @@ NIL
 1
 
 SLIDER
-951
+917
 50
-1141
+1107
 83
 number-of-packets-in-queue
 number-of-packets-in-queue
@@ -832,9 +847,9 @@ NIL
 HORIZONTAL
 
 SLIDER
-952
+920
 90
-1143
+1107
 123
 avg-time-to-send-pkt
 avg-time-to-send-pkt
@@ -847,9 +862,9 @@ s
 HORIZONTAL
 
 SLIDER
-952
+920
 128
-1143
+1109
 161
 Thop
 Thop
@@ -879,9 +894,9 @@ NIL
 1
 
 BUTTON
-1437
+1328
 10
-1585
+1476
 43
 NIL
 send-message
@@ -896,30 +911,15 @@ NIL
 1
 
 SLIDER
-1437
-48
-1586
-81
-number-of-messages
-number-of-messages
-1
-100
-4.0
-1
-1
-NIL
-HORIZONTAL
-
-SLIDER
-1196
+1125
 50
-1373
+1302
 83
 sending-rate
 sending-rate
 1
 100
-4.0
+5.0
 1
 1
 NIL
@@ -937,10 +937,10 @@ debug-reactive
 -1000
 
 BUTTON
-1437
-86
-1587
-119
+1328
+50
+1477
+83
 NIL
 move-nodes
 T
@@ -982,15 +982,15 @@ NIL
 1
 
 SLIDER
-1196
+1125
 92
-1374
+1303
 125
 number-of-proactive-ants
 number-of-proactive-ants
 1
 100
-1.0
+10.0
 1
 1
 NIL
@@ -1008,9 +1008,9 @@ debug-proactive
 -1000
 
 SWITCH
-1196
+1125
 10
-1373
+1302
 43
 proactive-maintenance
 proactive-maintenance
@@ -1130,12 +1130,12 @@ NIL
 1
 
 BUTTON
-1438
+1329
+89
+1478
 122
-1587
-155
 NIL
-kill-random-link
+kill-n-random-link
 NIL
 1
 T
@@ -1189,8 +1189,8 @@ SLIDER
 max-hops
 max-hops
 1
-200
-70.0
+500
+234.0
 1
 1
 NIL
@@ -1214,15 +1214,15 @@ NIL
 1
 
 SLIDER
-1438
-160
-1587
-193
+1487
+48
+1645
+81
 node-speed
 node-speed
 0
 1
-0.6
+1.0
 0.01
 1
 NIL
@@ -1244,6 +1244,21 @@ NIL
 NIL
 NIL
 1
+
+SLIDER
+1486
+86
+1646
+119
+n-links
+n-links
+1
+count links
+110.0
+1
+1
+NIL
+HORIZONTAL
 
 @#$#@#$#@
 ## WHAT IS IT?
